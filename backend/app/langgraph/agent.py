@@ -1,12 +1,13 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.errors import NodeInterrupt
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 from .tools import tools
 from .state import AgentState
+from .rag_node import retrieve_knowledge
 from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
 import os
@@ -23,6 +24,12 @@ def should_continue(state):
         return END
     else:
         return "tools"
+
+
+def should_use_rag(state):
+    # Check if user query might benefit from RAG
+    # In a production system, you'd want a more sophisticated check
+    return "rag"
 
 
 class AnyArgsSchema(BaseModel):
@@ -62,27 +69,53 @@ def get_tools(config):
 
 
 async def call_model(state, config):
+    thread_id = config.get("configurable", {}).get("thread_id", "unknown")
+    print(f"\n[AGENT] Calling model for thread: {thread_id}")
+    
     system = config["configurable"]["system"]
+    
+    # Add RAG context to system prompt if available
+    if "rag_context" in state and state["rag_context"]:
+        print(f"[AGENT] Using RAG context with {len(state['rag_context'])} documents")
+        rag_context = "\n\n".join(state["rag_context"])
+        enhanced_system = f"{system}\n\nRelevant information from knowledge base:\n{rag_context}"
+    else:
+        print("[AGENT] No RAG context available")
+        enhanced_system = system
 
-    messages = [SystemMessage(content=system)] + state["messages"]
+    messages = [SystemMessage(content=enhanced_system)] + state["messages"]
+    print(f"[AGENT] Total messages in context: {len(messages)}")
+    
+    print("[AGENT] Invoking model with tools...")
     model_with_tools = model.bind_tools(get_tool_defs(config))
     response = await model_with_tools.ainvoke(messages)
+    print(f"[AGENT] Model response received: {type(response)}")
+    
     # We return a list, because this will get added to the existing list
     return {"messages": response}
 
 
 async def run_tools(input, config, **kwargs):
+    thread_id = config.get("configurable", {}).get("thread_id", "unknown")
+    print(f"\n[TOOLS] Running tools for thread: {thread_id}")
+    
     tool_node = ToolNode(get_tools(config))
-    return await tool_node.ainvoke(input, config, **kwargs)
+    response = await tool_node.ainvoke(input, config, **kwargs)
+    
+    print(f"[TOOLS] Tool response: {response}")
+    return response
 
 
-# Define a new graph
+# Define a new graph with RAG capabilities
 workflow = StateGraph(AgentState)
 
+workflow.add_node("rag", retrieve_knowledge)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", run_tools)
 
-workflow.set_entry_point("agent")
+# Set the entry point to RAG for knowledge retrieval
+workflow.set_entry_point("rag")
+workflow.add_edge("rag", "agent")
 workflow.add_conditional_edges(
     "agent",
     should_continue,

@@ -2,10 +2,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Depends
 from .langgraph.agent import assistant_ui_graph
 from .add_langgraph_route import add_langgraph_route
+from .knowledge.routes import router as knowledge_router
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime
+
+# Add logging to server startup
+print("\n[SERVER] Initializing FastAPI application")
 
 app = FastAPI()
 # cors
@@ -16,6 +20,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+print("[SERVER] Added CORS middleware")
 
 # Models for conversation management
 class Conversation(BaseModel):
@@ -34,7 +40,12 @@ class ConversationUpdate(BaseModel):
 conversations = {}
 
 # Add routes with the new URL structure
+print("[SERVER] Adding LangGraph routes")
 add_langgraph_route(app, assistant_ui_graph, "/api")
+
+# Include knowledge management routes
+print("[SERVER] Adding knowledge management routes")
+app.include_router(knowledge_router, prefix="/api")
 
 # Utility for validating conversation existence
 async def get_conversation(conversation_id: str):
@@ -45,6 +56,7 @@ async def get_conversation(conversation_id: str):
 @app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(conversation_data: ConversationCreate):
     """Create a new conversation thread for memory persistence"""
+    print(f"\n[SERVER] Creating new conversation: {conversation_data.title}")
     now = datetime.now().isoformat()
     conversation_id = str(uuid.uuid4())
     conversation = Conversation(
@@ -54,6 +66,7 @@ async def create_conversation(conversation_data: ConversationCreate):
         updated_at=now
     )
     conversations[conversation_id] = conversation
+    print(f"[SERVER] Created conversation with ID: {conversation_id}")
     return conversation
 
 @app.get("/api/conversations", response_model=List[Conversation])
@@ -88,4 +101,5 @@ async def delete_conversation(conversation: Conversation = Depends(get_conversat
 if __name__ == "__main__":
     import uvicorn
 
+    print("[SERVER] Starting Uvicorn server...")
     uvicorn.run(app, host="0.0.0.0", port=8000)

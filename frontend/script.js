@@ -13,12 +13,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const newTitleInput = document.getElementById('new-title-input');
     const saveTitleBtn = document.getElementById('save-title-btn');
 
+    // Knowledge base elements
+    const knowledgeTab = document.getElementById('knowledge-tab');
+    const conversationsTab = document.getElementById('conversations-tab');
+    const uploadDocumentBtn = document.getElementById('upload-document-btn');
+    const documentsList = document.getElementById('documents-list');
+    const fileInput = document.getElementById('file-input');
+    const knowledgeSection = document.getElementById('knowledge-section');
+    const conversationsSection = document.getElementById('conversations-section');
+
     // API base URL
     const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
     // State for tracking conversations
     let currentConversationId = null;
     let conversations = [];
+    let documents = [];
 
     // Include marked.js library for markdown rendering
     const markedScript = document.createElement('script');
@@ -412,6 +422,201 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Knowledge Base Management Functions
+
+    // Function to load all documents
+    const loadDocuments = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/knowledge/documents`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            documents = data.documents;
+            renderDocumentsList();
+
+            return documents;
+        } catch (error) {
+            console.error('Error loading documents:', error);
+            alert('Failed to load documents. Please refresh the page.');
+        }
+    };
+
+    // Function to render the documents list
+    const renderDocumentsList = () => {
+        documentsList.innerHTML = '';
+
+        if (documents.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.classList.add('empty-state');
+            emptyState.textContent = 'No documents uploaded yet. Add documents to the knowledge base to get started.';
+            documentsList.appendChild(emptyState);
+            return;
+        }
+
+        // Sort documents by created_at (newest first)
+        const sortedDocuments = [...documents].sort((a, b) =>
+            new Date(b.created_at) - new Date(a.created_at)
+        );
+
+        sortedDocuments.forEach(doc => {
+            const item = document.createElement('div');
+            item.classList.add('document-item');
+
+            const iconContainer = document.createElement('div');
+            iconContainer.classList.add('document-icon');
+
+            // Choose icon based on content type
+            let iconText = '📄';
+            if (doc.content_type.includes('pdf')) {
+                iconText = '📕';
+            } else if (doc.content_type.includes('word')) {
+                iconText = '📘';
+            } else if (doc.content_type.includes('html')) {
+                iconText = '📰';
+            }
+
+            iconContainer.textContent = iconText;
+
+            const infoContainer = document.createElement('div');
+            infoContainer.classList.add('document-info');
+
+            const nameElement = document.createElement('div');
+            nameElement.classList.add('document-name');
+            nameElement.textContent = doc.name;
+
+            const metaElement = document.createElement('div');
+            metaElement.classList.add('document-meta');
+
+            // Format file size
+            let sizeText = '';
+            if (doc.size < 1024) {
+                sizeText = `${doc.size} bytes`;
+            } else if (doc.size < 1024 * 1024) {
+                sizeText = `${(doc.size / 1024).toFixed(1)} KB`;
+            } else {
+                sizeText = `${(doc.size / (1024 * 1024)).toFixed(1)} MB`;
+            }
+
+            // Format date
+            const date = new Date(doc.created_at);
+            const dateString = date.toLocaleDateString();
+
+            metaElement.textContent = `${sizeText} • ${dateString}`;
+
+            infoContainer.appendChild(nameElement);
+            infoContainer.appendChild(metaElement);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.classList.add('delete-document-btn');
+            deleteButton.textContent = '🗑️';
+            deleteButton.title = 'Delete document';
+            deleteButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteDocument(doc.document_id);
+            });
+
+            item.appendChild(iconContainer);
+            item.appendChild(infoContainer);
+            item.appendChild(deleteButton);
+
+            documentsList.appendChild(item);
+        });
+    };
+
+    // Function to upload a document
+    const uploadDocument = async (file) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show loading indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.classList.add('loading-indicator');
+            loadingDiv.innerHTML = `
+                <div class="spinner"></div>
+                <p>Uploading ${file.name}...</p>
+            `;
+            documentsList.prepend(loadingDiv);
+
+            const response = await fetch(`${API_BASE_URL}/knowledge/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const newDocument = await response.json();
+
+            // Remove loading indicator
+            loadingDiv.remove();
+
+            // Refresh documents list
+            await loadDocuments();
+
+            // Show success message
+            const successDiv = document.createElement('div');
+            successDiv.classList.add('success-message');
+            successDiv.textContent = `${file.name} uploaded successfully!`;
+            documentsList.prepend(successDiv);
+
+            setTimeout(() => {
+                successDiv.remove();
+            }, 3000);
+
+        } catch (error) {
+            console.error('Error uploading document:', error);
+            alert('Failed to upload document. Please try again.');
+
+            // Remove loading indicator if it exists
+            const loadingDiv = document.querySelector('.loading-indicator');
+            if (loadingDiv) {
+                loadingDiv.remove();
+            }
+        }
+    };
+
+    // Function to delete a document
+    const deleteDocument = async (documentId) => {
+        if (!confirm("Are you sure you want to delete this document?")) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/knowledge/delete/${documentId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // Refresh documents list
+            await loadDocuments();
+
+        } catch (error) {
+            console.error('Error deleting document:', error);
+            alert('Failed to delete the document. Please try again.');
+        }
+    };
+
+    // Function to switch tabs
+    const switchTab = (tab) => {
+        if (tab === 'knowledge') {
+            knowledgeSection.style.display = 'block';
+            conversationsSection.style.display = 'none';
+            knowledgeTab.classList.add('active');
+            conversationsTab.classList.remove('active');
+            loadDocuments();
+        } else {
+            knowledgeSection.style.display = 'none';
+            conversationsSection.style.display = 'block';
+            conversationsTab.classList.add('active');
+            knowledgeTab.classList.remove('active');
+        }
+    };
+
     // Modal functions
     const openRenameModal = () => {
         renameModal.style.display = 'block';
@@ -444,6 +649,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Knowledge base event listeners
+    if (knowledgeTab) {
+        knowledgeTab.addEventListener('click', () => switchTab('knowledge'));
+    }
+
+    if (conversationsTab) {
+        conversationsTab.addEventListener('click', () => switchTab('conversations'));
+    }
+
+    if (uploadDocumentBtn) {
+        uploadDocumentBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (event) => {
+            const files = event.target.files;
+            if (files.length > 0) {
+                uploadDocument(files[0]);
+                // Clear the input for future uploads
+                fileInput.value = '';
+            }
+        });
+    }
+
     // Hide modal when clicking outside
     window.addEventListener('click', (event) => {
         if (event.target === renameModal) {
@@ -468,6 +699,11 @@ document.addEventListener('DOMContentLoaded', () => {
             selectConversation(conversations[0].conversation_id);
         } else {
             createNewConversation();
+        }
+
+        // Default to conversations tab
+        if (conversationsTab) {
+            switchTab('conversations');
         }
     };
 

@@ -151,12 +151,19 @@ class ChatRequest(BaseModel):
 
 def add_langgraph_route(app: FastAPI, graph, base_path: str):
     async def chat_completions(conversation_id: str, request: ChatRequest):
+        print(f"\n[API] Received chat request for conversation: {conversation_id}")
+        print(f"[API] System prompt length: {len(request.system)} chars")
+        print(f"[API] Number of tools: {len(request.tools)}")
+        print(f"[API] Number of messages: {len(request.messages)}")
+        
         inputs = convert_to_langchain_messages(request.messages)
+        print(f"[API] Converted to {len(inputs)} LangChain messages")
         
         # Use conversation_id from URL path for thread persistence
         thread_id = conversation_id
 
         async def run(controller: RunController):
+            print(f"[API] Starting streaming response for thread: {thread_id}")
             tool_calls = {}
             tool_calls_by_idx = {}
 
@@ -169,35 +176,50 @@ def add_langgraph_route(app: FastAPI, graph, base_path: str):
                 }
             }
 
+            print(f"[API] Streaming from LangGraph with thread_id: {thread_id}")
+            message_count = 0
+            
             async for msg, metadata in graph.astream(
                 {"messages": inputs},
                 config,
                 stream_mode="messages",
             ):
+                message_count += 1
+                print(f"[API] Received message {message_count} of type: {type(msg).__name__}")
+                
                 if isinstance(msg, ToolMessage):
+                    print(f"[API] Tool message received for tool_call_id: {msg.tool_call_id}")
                     tool_controller = tool_calls[msg.tool_call_id]
                     tool_controller.set_result(msg.content)
+                    print(f"[API] Tool result set: {msg.content[:50]}...")
 
                 if isinstance(msg, AIMessageChunk) or isinstance(msg, AIMessage):
                     if msg.content:
+                        print(f"[API] AI content chunk: {msg.content[:50]}...")
                         controller.append_text(msg.content)
 
-                    for chunk in msg.tool_call_chunks:
-                        if not chunk["index"] in tool_calls_by_idx:
-                            tool_controller = await controller.add_tool_call(
-                                chunk["name"], chunk["id"]
-                            )
-                            tool_calls_by_idx[chunk["index"]] = tool_controller
-                            tool_calls[chunk["id"]] = tool_controller
-                        else:
-                            tool_controller = tool_calls_by_idx[chunk["index"]]
+                    if hasattr(msg, 'tool_call_chunks') and msg.tool_call_chunks:
+                        print(f"[API] Tool call chunks: {len(msg.tool_call_chunks)}")
+                        for chunk in msg.tool_call_chunks:
+                            print(f"[API] Tool call: {chunk['name']}")
+                            if not chunk["index"] in tool_calls_by_idx:
+                                tool_controller = await controller.add_tool_call(
+                                    chunk["name"], chunk["id"]
+                                )
+                                tool_calls_by_idx[chunk["index"]] = tool_controller
+                                tool_calls[chunk["id"]] = tool_controller
+                            else:
+                                tool_controller = tool_calls_by_idx[chunk["index"]]
 
-                        tool_controller.append_args_text(chunk["args"])
+                            tool_controller.append_args_text(chunk["args"])
 
             # Add a hidden thread ID reference at the end of the response
+            print(f"[API] Streaming complete, adding thread_id reference")
             controller.append_text(f"\n<!--conversation_id:{thread_id}-->")
 
+        print(f"[API] Creating DataStreamResponse for conversation: {conversation_id}")
         return DataStreamResponse(create_run(run))
 
     # New endpoint format using conversation_id in the path
     app.add_api_route(f"{base_path}/{{conversation_id}}/chat", chat_completions, methods=["POST"])
+    print(f"[API] Registered chat route at: {base_path}/{{conversation_id}}/chat")

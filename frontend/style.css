@@ -35,12 +35,37 @@ body {
 #sidebar-header {
     padding: 15px;
     border-bottom: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
 }
 
-#new-conversation-btn {
+/* Tab Styles */
+.tabs {
+    display: flex;
+    width: 100%;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    border-bottom: 2px solid var(--primary-color);
+    color: var(--primary-color);
+}
+
+.section-actions {
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#new-conversation-btn, #upload-document-btn {
+    width: 100%;
     padding: 8px;
     background-color: var(--primary-color);
     color: #fff;
@@ -51,11 +76,11 @@ body {
     transition: background-color 0.3s;
 }
 
-#new-conversation-btn:hover {
+#new-conversation-btn:hover, #upload-document-btn:hover {
     background-color: var(--primary-hover);
 }
 
-#conversation-list {
+#conversation-list, #documents-list {
     flex: 1;
     overflow-y: auto;
     padding: 10px;
@@ -75,6 +100,95 @@ body {
 .conversation-item.active {
     background-color: var(--user-bg);
     font-weight: 500;
+}
+
+/* Knowledge base specific styles */
+.document-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    background-color: var(--light-bg);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.document-icon {
+    font-size: 24px;
+    margin-right: 10px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.document-info {
+    flex: 1;
+}
+
+.document-name {
+    font-weight: 500;
+    margin-bottom: 3px;
+    word-break: break-word;
+}
+
+.document-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+.delete-document-btn {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.3s;
+}
+
+.delete-document-btn:hover {
+    opacity: 1;
+}
+
+.empty-state {
+    text-align: center;
+    color: #666;
+    padding: 20px;
+    font-style: italic;
+}
+
+.loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background-color: rgba(0, 128, 128, 0.1);
+    border-radius: 5px;
+}
+
+.spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(0, 128, 128, 0.2);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.success-message {
+    padding: 10px;
+    background-color: #d4edda;
+    color: #155724;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    text-align: center;
 }
 
 /* Chat container styles */
@@ -290,7 +404,15 @@ body {
 }
 
 .message-text {
-    margin: 1rem;
+    margin-bottom: 10px;
+}
+
+.message-text pre {
+    background: #f0f0f0;
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-size: 14px;
 }
 
 .timestamp {
