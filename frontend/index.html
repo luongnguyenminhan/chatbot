@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistant UI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <div id="sidebar">
+            <div id="sidebar-header">
+                <h2>Conversations</h2>
+                <button id="new-conversation-btn">+ New Chat</button>
+            </div>
+            <div id="conversation-list">
+                <!-- Conversation items will be added here -->
+            </div>
+        </div>
+
+        <div id="chat-container">
+            <div id="chat-header">
+                <h2 id="current-conversation-title">New Conversation</h2>
+                <div id="conversation-actions">
+                    <button id="rename-conversation-btn">Rename</button>
+                    <button id="delete-conversation-btn">Delete</button>
+                </div>
+            </div>
+            <div id="chat-log">
+                <!-- Chat messages will appear here -->
+            </div>
+            <div id="input-area">
+                <button id="emoji-button">😊</button>
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename conversation modal -->
+    <div id="rename-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Rename Conversation</h3>
+            <input type="text" id="new-title-input" placeholder="Enter new title">
+            <button id="save-title-btn">Save</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
