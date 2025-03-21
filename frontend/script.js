@@ -326,6 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const messageTextDiv = document.createElement('div');
             messageTextDiv.classList.add('message-text');
+            messageTextDiv.textContent = "Thinking..."; // Initial placeholder
 
             const timestampDiv = document.createElement('div');
             timestampDiv.classList.add('timestamp');
@@ -341,11 +342,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // Process streaming response
             let messageBuffer = '';
             const reader = response.body.getReader();
-            const decoder = new TextDecoder();
+            const decoder = new TextDecoder('utf-8');  // Explicitly use UTF-8
 
+            console.log('[CLIENT] Starting to read stream...');
+            
             while (true) {
                 const { done, value } = await reader.read();
+                
                 if (done) {
+                    console.log('[CLIENT] Stream complete');
                     // Clean the conversation ID hidden marker for display
                     const cleanMessage = messageBuffer.replace(/\n<!--conversation_id:[a-f0-9-]+-->/g, '');
                     // Finalize with markdown rendering
@@ -359,64 +364,61 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 }
 
-                // Decode and parse chunk
+                // Decode chunk
                 const chunk = decoder.decode(value, { stream: true });
-                let textChunk = '';
-                const regex = /\d+:"([^"]*)"/g;
-                let match;
-                let foundMatch = false;
-
-                while ((match = regex.exec(chunk)) !== null) {
-                    foundMatch = true;
-                    textChunk += match[1];
-                }
-
-                if (!foundMatch) {
-                    try {
-                        const lines = chunk.split('\n').filter(line => line.trim());
-                        for (const line of lines) {
-                            if (line.startsWith('data:')) {
-                                const jsonData = line.substring(5).trim();
-                                const parsedData = JSON.parse(jsonData);
-                                if (parsedData.type === 'text') {
-                                    textChunk += parsedData.text;
-                                }
-                            } else {
-                                const parsedChunk = JSON.parse(line);
-                                if (parsedChunk.type === 'data' && parsedChunk.data) {
-                                    textChunk += parsedChunk.data;
-                                }
+                console.log('[CLIENT] Raw chunk received:', chunk);
+                
+                // Process SSE format (data: {...})
+                const lines = chunk.split('\n\n');
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    
+                    if (line.startsWith('data:')) {
+                        try {
+                            const jsonStr = line.substring(5).trim();
+                            console.log('[CLIENT] JSON string:', jsonStr);
+                            
+                            // Skip empty data
+                            if (!jsonStr) continue;
+                            
+                            const data = JSON.parse(jsonStr);
+                            console.log('[CLIENT] Parsed data:', data);
+                            
+                            if (data.text) {
+                                messageBuffer += data.text;
+                                // Clean hidden markers for display
+                                const cleanBuffer = messageBuffer.replace(/\n<!--conversation_id:[a-f0-9-]+-->/g, '');
+                                messageTextDiv.textContent = cleanBuffer;
+                                chatLog.scrollTop = chatLog.scrollHeight;
                             }
-                        }
-                    } catch (e) {
-                        const indexContentRegex = /(\d+):(.+)/g;
-                        let indexContentMatch;
-                        let foundIndexContent = false;
-
-                        while ((indexContentMatch = indexContentRegex.exec(chunk)) !== null) {
-                            foundIndexContent = true;
-                            textChunk += indexContentMatch[2];
-                        }
-
-                        if (!foundIndexContent) {
-                            textChunk += chunk;
+                            
+                            if (data.error) {
+                                console.error('[CLIENT] Error from server:', data.error);
+                                messageTextDiv.textContent = `Error: ${data.error}`;
+                            }
+                        } catch (e) {
+                            console.error('[CLIENT] Error parsing SSE data:', e);
+                            // Try to extract any text we can
+                            const textMatch = line.substring(5).match(/"text":"([^"]*)"/);
+                            if (textMatch && textMatch[1]) {
+                                const extractedText = textMatch[1];
+                                console.log('[CLIENT] Extracted text from error:', extractedText);
+                                messageBuffer += extractedText;
+                                messageTextDiv.textContent = messageBuffer;
+                            } else {
+                                messageBuffer += line.substring(5);
+                                messageTextDiv.textContent = messageBuffer;
+                            }
                         }
                     }
                 }
-
-                // Update message progressively
-                messageBuffer += textChunk;
-                // Clean hidden markers for display
-                const cleanBuffer = messageBuffer.replace(/\n<!--conversation_id:[a-f0-9-]+-->/g, '');
-                messageTextDiv.textContent = cleanBuffer;
-                chatLog.scrollTop = chatLog.scrollHeight;
             }
 
             // Refresh the conversation list to update timestamps
             loadConversations();
 
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('[CLIENT] Error sending message:', error);
             const errorMessage = error instanceof TypeError ? 'Error: Network error. Please check your connection.' : `Error: ${error.message}`;
             displayMessage(errorMessage, 'assistant');
         }

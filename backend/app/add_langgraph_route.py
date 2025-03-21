@@ -1,3 +1,7 @@
+from fastapi import FastAPI, Response
+from fastapi.responses import StreamingResponse
+import json
+import asyncio
 from assistant_stream import create_run, RunController
 from assistant_stream.serialization import DataStreamResponse
 from langchain_core.messages import (
@@ -162,63 +166,75 @@ def add_langgraph_route(app: FastAPI, graph, base_path: str):
         # Use conversation_id from URL path for thread persistence
         thread_id = conversation_id
 
-        async def run(controller: RunController):
-            print(f"[API] Starting streaming response for thread: {thread_id}")
-            tool_calls = {}
-            tool_calls_by_idx = {}
-
+        # Custom streaming implementation
+        async def stream_response():
+            """Stream response with proper Unicode handling"""
+            print(f"\n[STREAM] Starting custom stream for conversation: {conversation_id}")
+            
             # Pass thread_id to the graph configuration
             config = {
                 "configurable": {
                     "system": request.system,
                     "frontend_tools": request.tools,
-                    "thread_id": thread_id  # This enables memory persistence
+                    "thread_id": thread_id
                 }
             }
-
-            print(f"[API] Streaming from LangGraph with thread_id: {thread_id}")
+            
             message_count = 0
             
-            async for msg, metadata in graph.astream(
-                {"messages": inputs},
-                config,
-                stream_mode="messages",
-            ):
-                message_count += 1
-                print(f"[API] Received message {message_count} of type: {type(msg).__name__}")
+            try:
+                # Send initial message to make sure client receives headers
+                yield "data: {}\n\n"
                 
-                if isinstance(msg, ToolMessage):
-                    print(f"[API] Tool message received for tool_call_id: {msg.tool_call_id}")
-                    tool_controller = tool_calls[msg.tool_call_id]
-                    tool_controller.set_result(msg.content)
-                    print(f"[API] Tool result set: {msg.content[:50]}...")
-
-                if isinstance(msg, AIMessageChunk) or isinstance(msg, AIMessage):
-                    if msg.content:
-                        print(f"[API] AI content chunk: {msg.content[:50]}...")
-                        controller.append_text(msg.content)
-
-                    if hasattr(msg, 'tool_call_chunks') and msg.tool_call_chunks:
-                        print(f"[API] Tool call chunks: {len(msg.tool_call_chunks)}")
-                        for chunk in msg.tool_call_chunks:
-                            print(f"[API] Tool call: {chunk['name']}")
-                            if not chunk["index"] in tool_calls_by_idx:
-                                tool_controller = await controller.add_tool_call(
-                                    chunk["name"], chunk["id"]
-                                )
-                                tool_calls_by_idx[chunk["index"]] = tool_controller
-                                tool_calls[chunk["id"]] = tool_controller
-                            else:
-                                tool_controller = tool_calls_by_idx[chunk["index"]]
-
-                            tool_controller.append_args_text(chunk["args"])
-
-            # Add a hidden thread ID reference at the end of the response
-            print(f"[API] Streaming complete, adding thread_id reference")
-            controller.append_text(f"\n<!--conversation_id:{thread_id}-->")
-
-        print(f"[API] Creating DataStreamResponse for conversation: {conversation_id}")
-        return DataStreamResponse(create_run(run))
+                async for msg, metadata in graph.astream(
+                    {"messages": inputs},
+                    config,
+                    stream_mode="messages",
+                ):
+                    message_count += 1
+                    print(f"\n[STREAM] Received message {message_count} of type: {type(msg).__name__}")
+                    
+                    if isinstance(msg, AIMessageChunk) or isinstance(msg, AIMessage):
+                        if msg.content:
+                            # Print full raw content for debugging
+                            print(f"[STREAM] RAW CONTENT BEGIN >>>")
+                            print(msg.content)
+                            print(f"[STREAM] <<< RAW CONTENT END")
+                            
+                            # Print hex representation to debug encoding issues
+                            print(f"[STREAM] HEX REPRESENTATION:")
+                            print(''.join(f'\\x{ord(c):02x}' for c in msg.content[:50]))
+                            
+                            # Send as JSON to preserve Unicode
+                            json_data = json.dumps({"text": msg.content})
+                            print(f"[STREAM] JSON encoded: {json_data[:50]}...")
+                            yield f"data: {json_data}\n\n"
+                    
+                    elif isinstance(msg, ToolMessage):
+                        print(f"[STREAM] Tool message: {msg.tool_call_id}")
+                        json_data = json.dumps({"tool": msg.tool_call_id, "result": msg.content})
+                        yield f"data: {json_data}\n\n"
+                
+                # Add conversation ID reference at the end
+                thread_ref = f"\n<!--conversation_id:{thread_id}-->"
+                yield f"data: {json.dumps({'text': thread_ref})}\n\n"
+                print(f"[STREAM] Stream completed, sent {message_count} messages")
+                
+            except Exception as e:
+                print(f"[STREAM] ERROR during streaming: {str(e)}")
+                error_msg = {"error": str(e)}
+                yield f"data: {json.dumps(error_msg)}\n\n"
+        
+        # Use standard StreamingResponse with SSE format
+        return StreamingResponse(
+            stream_response(), 
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive", 
+                "Content-Encoding": "identity"
+            }
+        )
 
     # New endpoint format using conversation_id in the path
     app.add_api_route(f"{base_path}/{{conversation_id}}/chat", chat_completions, methods=["POST"])
