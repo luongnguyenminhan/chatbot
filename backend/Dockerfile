@@ -1,21 +1,54 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-buster
 
-RUN pip install poetry==1.6.1
+WORKDIR /app
 
-RUN poetry config virtualenvs.create false
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        libpq-dev \
+        curl \
+        tini \
+        ffmpeg \
+        libgomp1 \
+        git \
+        libsndfile1 \
+        unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-WORKDIR /code
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    PYTHONPATH=/app \
+    HF_HOME=/app/data/huggingface \
+    HOME=/app \
+    ENV=development
 
-COPY ./pyproject.toml ./README.md ./poetry.lock* ./
+# Create non-root user
+RUN addgroup --system appuser && \
+    adduser --system --ingroup appuser appuser
 
-COPY ./package[s] ./packages
+# Install Python dependencies
+COPY ./requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && \
+    apt-get purge -y --auto-remove gcc
 
-RUN poetry install  --no-interaction --no-ansi --no-root
+# Copy the fixed data_stream.py to replace the problematic library file
+COPY ./data_stream.py /usr/local/lib/python3.11/site-packages/assistant_stream/serialization/data_stream.py
 
-COPY ./app ./app
+# Copy application code
+COPY --chown=appuser:appuser ./app ./app
 
-RUN poetry install --no-interaction --no-ansi
+RUN mkdir -p /app/qdrant_data && \
+    chown -R appuser:appuser /app/qdrant_data && \
+    chmod -R 777 /app/qdrant_data
 
-EXPOSE 8080
+EXPOSE 8000
 
-CMD exec uvicorn app.server:app --host 0.0.0.0 --port 8080
+USER appuser
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "300", "--log-level", "debug"]
