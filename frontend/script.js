@@ -345,10 +345,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const decoder = new TextDecoder('utf-8');  // Explicitly use UTF-8
 
             console.log('[CLIENT] Starting to read stream...');
-            
+
             while (true) {
                 const { done, value } = await reader.read();
-                
+
                 if (done) {
                     console.log('[CLIENT] Stream complete');
                     // Clean the conversation ID hidden marker for display
@@ -367,23 +367,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Decode chunk
                 const chunk = decoder.decode(value, { stream: true });
                 console.log('[CLIENT] Raw chunk received:', chunk);
-                
+
                 // Process SSE format (data: {...})
                 const lines = chunk.split('\n\n');
                 for (const line of lines) {
                     if (line.trim() === '') continue;
-                    
+
                     if (line.startsWith('data:')) {
                         try {
                             const jsonStr = line.substring(5).trim();
                             console.log('[CLIENT] JSON string:', jsonStr);
-                            
+
                             // Skip empty data
                             if (!jsonStr) continue;
-                            
+
                             const data = JSON.parse(jsonStr);
                             console.log('[CLIENT] Parsed data:', data);
-                            
+
                             if (data.text) {
                                 messageBuffer += data.text;
                                 // Clean hidden markers for display
@@ -391,7 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 messageTextDiv.textContent = cleanBuffer;
                                 chatLog.scrollTop = chatLog.scrollHeight;
                             }
-                            
+
                             if (data.error) {
                                 console.error('[CLIENT] Error from server:', data.error);
                                 messageTextDiv.textContent = `Error: ${data.error}`;
