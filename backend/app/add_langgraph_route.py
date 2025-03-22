@@ -13,85 +13,18 @@ from langchain_core.messages import (
     BaseMessage,
 )
 from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
-from typing import List, Literal, Union, Optional, Any
+from typing import List, Any, Optional
 import uuid
 from .database.mongo_client import mongo_db
-
-
-class LanguageModelTextPart(BaseModel):
-    type: Literal["text"]
-    text: str
-    providerMetadata: Optional[Any] = None
-
-
-class LanguageModelImagePart(BaseModel):
-    type: Literal["image"]
-    image: str  # Will handle URL or base64 string
-    mimeType: Optional[str] = None
-    providerMetadata: Optional[Any] = None
-
-
-class LanguageModelFilePart(BaseModel):
-    type: Literal["file"]
-    data: str  # URL or base64 string
-    mimeType: str
-    providerMetadata: Optional[Any] = None
-
-
-class LanguageModelToolCallPart(BaseModel):
-    type: Literal["tool-call"]
-    toolCallId: str
-    toolName: str
-    args: Any
-    providerMetadata: Optional[Any] = None
-
-
-class LanguageModelToolResultContentPart(BaseModel):
-    type: Literal["text", "image"]
-    text: Optional[str] = None
-    data: Optional[str] = None
-    mimeType: Optional[str] = None
-
-
-class LanguageModelToolResultPart(BaseModel):
-    type: Literal["tool-result"]
-    toolCallId: str
-    toolName: str
-    result: Any
-    isError: Optional[bool] = None
-    content: Optional[List[LanguageModelToolResultContentPart]] = None
-    providerMetadata: Optional[Any] = None
-
-
-class LanguageModelSystemMessage(BaseModel):
-    role: Literal["system"]
-    content: str
-
-
-class LanguageModelUserMessage(BaseModel):
-    role: Literal["user"]
-    content: List[
-        Union[LanguageModelTextPart, LanguageModelImagePart, LanguageModelFilePart]
-    ]
-
-
-class LanguageModelAssistantMessage(BaseModel):
-    role: Literal["assistant"]
-    content: List[Union[LanguageModelTextPart, LanguageModelToolCallPart]]
-
-
-class LanguageModelToolMessage(BaseModel):
-    role: Literal["tool"]
-    content: List[LanguageModelToolResultPart]
-
-
-LanguageModelV1Message = Union[
-    LanguageModelSystemMessage,
-    LanguageModelUserMessage,
-    LanguageModelAssistantMessage,
-    LanguageModelToolMessage,
-]
+from .models import (
+    LanguageModelV1Message,
+    LanguageModelTextPart,
+    LanguageModelImagePart,
+    LanguageModelToolCallPart,
+    LanguageModelToolResultPart,
+    ChatRequest,
+    FrontendToolCall
+)
 
 
 def convert_to_langchain_messages(
@@ -156,19 +89,6 @@ def save_message_to_mongodb(conversation_id: str, role: str, content: str, tool_
         mongo_db.save_message(conversation_id, message_data)
         return True
     return False
-
-
-class FrontendToolCall(BaseModel):
-    name: str
-    description: Optional[str] = None
-    parameters: dict[str, Any]
-
-
-class ChatRequest(BaseModel):
-    system: Optional[str] = ""
-    tools: Optional[List[FrontendToolCall]] = []
-    messages: List[LanguageModelV1Message]
-    # No thread_id field since it comes from path parameter
 
 
 def add_langgraph_route(app: FastAPI, graph, base_path: str):

@@ -49,10 +49,16 @@ class MongoDBClient:
     # === Conversation methods ===
     
     def create_conversation(self, conversation_id: str, title: str) -> Dict[str, Any]:
-        """Create a new conversation"""
+        """Create a new conversation with the provided ID"""
         if self.client is None:
             print("[MONGODB] Database not connected, skipping create_conversation")
             return None
+            
+        # Check if conversation already exists to avoid duplicates
+        existing = self.get_conversation(conversation_id)
+        if existing:
+            print(f"[MONGODB] Conversation with ID {conversation_id} already exists")
+            return existing
             
         now = datetime.now().isoformat()
         conversation = {

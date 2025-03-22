@@ -1,23 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import List, Optional
-import uuid
+from typing import List
 from datetime import datetime
+from .models import Conversation, ConversationCreate, ConversationUpdate
 
 router = APIRouter()
-
-# Models for conversation management
-class Conversation(BaseModel):
-    conversation_id: str
-    title: Optional[str] = "New Conversation"
-    created_at: str
-    updated_at: str
-
-class ConversationCreate(BaseModel):
-    title: Optional[str] = "New Conversation"
-
-class ConversationUpdate(BaseModel):
-    title: Optional[str] = None
 
 # In-memory conversation storage
 conversations = {}
@@ -30,16 +16,22 @@ async def get_conversation(conversation_id: str):
 
 @router.post("/conversations", response_model=Conversation)
 async def create_conversation(conversation_data: ConversationCreate):
-    """Create a new conversation thread for memory persistence"""
+    """Create a new conversation thread using the provided ID"""
+    # Check if conversation with provided ID already exists
+    if conversation_data.conversation_id in conversations:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Conversation with ID {conversation_data.conversation_id} already exists"
+        )
+    
     now = datetime.now().isoformat()
-    conversation_id = str(uuid.uuid4())
     conversation = Conversation(
-        conversation_id=conversation_id,
+        conversation_id=conversation_data.conversation_id,
         title=conversation_data.title,
         created_at=now,
         updated_at=now
     )
-    conversations[conversation_id] = conversation
+    conversations[conversation_data.conversation_id] = conversation
     return conversation
 
 @router.get("/conversations", response_model=List[Conversation])

@@ -4,7 +4,7 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.errors import NodeInterrupt
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel
+from ..models import AnyArgsSchema, FrontendToolCall
 from .tools import tools
 from .state import AgentState
 from .rag_node import retrieve_knowledge
@@ -30,13 +30,6 @@ def should_use_rag(state):
     # Check if user query might benefit from RAG
     # In a production system, you'd want a more sophisticated check
     return "rag"
-
-
-class AnyArgsSchema(BaseModel):
-    # By not defining any fields and allowing extras,
-    # this schema will accept any input passed in.
-    class Config:
-        extra = "allow"
 
 
 class FrontendTool(BaseTool):

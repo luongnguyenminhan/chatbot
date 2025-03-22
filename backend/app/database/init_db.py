@@ -38,8 +38,10 @@ def initialize_database():
         db[MESSAGES_COLLECTION].create_index("conversation_id")
         print(f"Created index on conversation_id for {MESSAGES_COLLECTION} collection")
         
-        db[CONVERSATIONS_COLLECTION].create_index("conversation_id", unique=True)
-        print(f"Created unique index on conversation_id for {CONVERSATIONS_COLLECTION} collection")
+        # Create index but remove the unique constraint, allowing clients to set their own IDs
+        # and handle potential duplicates at the application level
+        db[CONVERSATIONS_COLLECTION].create_index("conversation_id")
+        print(f"Created index on conversation_id for {CONVERSATIONS_COLLECTION} collection")
         
         # Check connection by performing a simple command
         client.admin.command('ping')

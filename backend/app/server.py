@@ -4,9 +4,14 @@ from .langgraph.agent import assistant_ui_graph
 from .add_langgraph_route import add_langgraph_route
 from .knowledge.routes import router as knowledge_router
 from .database.mongo_client import mongo_db
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import uuid
+from .models import (
+    Conversation, 
+    ConversationCreate, 
+    ConversationUpdate,
+    StatusResponse,
+    HealthCheckResponse
+)
+from typing import List
 from datetime import datetime
 
 # Add logging to server startup
@@ -29,19 +34,6 @@ if mongo_db.health_check():
     print("[SERVER] MongoDB connection successful")
 else:
     print("[SERVER] WARNING: MongoDB connection failed, falling back to in-memory storage")
-
-# Models for conversation management
-class Conversation(BaseModel):
-    conversation_id: str
-    title: Optional[str] = "New Conversation"
-    created_at: str
-    updated_at: str
-
-class ConversationCreate(BaseModel):
-    title: Optional[str] = "New Conversation"
-
-class ConversationUpdate(BaseModel):
-    title: Optional[str] = None
 
 # In-memory conversation storage (fallback if MongoDB isn't available)
 conversations = {}
@@ -70,31 +62,44 @@ async def get_conversation(conversation_id: str):
 
 @app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(conversation_data: ConversationCreate):
-    """Create a new conversation thread for memory persistence"""
-    print(f"\n[SERVER] Creating new conversation: {conversation_data.title}")
-    
-    conversation_id = str(uuid.uuid4())
+    """Create a new conversation thread using the client-provided ID"""
+    print(f"\n[SERVER] Creating new conversation with ID: {conversation_data.conversation_id}")
     
     # Use MongoDB if available
     if mongo_db.health_check():
+        # Check if conversation with this ID already exists
+        existing = mongo_db.get_conversation(conversation_data.conversation_id)
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Conversation with ID {conversation_data.conversation_id} already exists"
+            )
+            
         conversation = mongo_db.create_conversation(
-            conversation_id=conversation_id,
+            conversation_id=conversation_data.conversation_id,
             title=conversation_data.title
         )
         if conversation:
             return Conversation(**conversation)
     
     # Fall back to in-memory storage
+    # Check if conversation already exists in memory storage
+    if conversation_data.conversation_id in conversations:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Conversation with ID {conversation_data.conversation_id} already exists"
+        )
+        
     now = datetime.now().isoformat()
     conversation = Conversation(
-        conversation_id=conversation_id,
+        conversation_id=conversation_data.conversation_id,
         title=conversation_data.title,
         created_at=now,
         updated_at=now
     )
-    conversations[conversation_id] = conversation
+    conversations[conversation_data.conversation_id] = conversation
     
-    print(f"[SERVER] Created conversation with ID: {conversation_id}")
+    print(f"[SERVER] Created conversation with ID: {conversation_data.conversation_id}")
     return conversation
 
 @app.get("/api/conversations", response_model=List[Conversation])
@@ -138,7 +143,7 @@ async def update_conversation(
     
     return conversation
 
-@app.delete("/api/conversations/{conversation_id}")
+@app.delete("/api/conversations/{conversation_id}", response_model=StatusResponse)
 async def delete_conversation(conversation: Conversation = Depends(get_conversation)):
     """Delete a conversation"""
     # Use MongoDB if available
@@ -150,15 +155,18 @@ async def delete_conversation(conversation: Conversation = Depends(get_conversat
         # Fall back to in-memory storage
         del conversations[conversation.conversation_id]
     
-    return {"status": "success", "message": f"Conversation {conversation.conversation_id} deleted"}
+    return StatusResponse(
+        status="success", 
+        message=f"Conversation {conversation.conversation_id} deleted"
+    )
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthCheckResponse)
 async def health_check():
     """API health check endpoint"""
-    return {
-        "status": "healthy",
-        "mongodb": mongo_db.health_check()
-    }
+    return HealthCheckResponse(
+        status="healthy",
+        mongodb=mongo_db.health_check()
+    )
 
 if __name__ == "__main__":
     import uvicorn
