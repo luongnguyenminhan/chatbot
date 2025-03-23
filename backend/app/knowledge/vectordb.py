@@ -1,5 +1,5 @@
 import os
-from langchain_community.vectorstores import Qdrant
+from langchain_qdrant import Qdrant
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
@@ -9,7 +9,7 @@ from langchain_community.document_loaders import (
     UnstructuredHTMLLoader
 )
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import Distance, VectorParams, Filter, FieldCondition, MatchValue
 import uuid
 from datetime import datetime
 import tempfile
@@ -130,15 +130,45 @@ def delete_document(document_id):
     if document_id in document_metadata:
         # Delete from Qdrant using filter by metadata
         print(f"[VECTORDB] Deleting chunks from vector database...")
-        qdrant_client.delete(
-            collection_name=COLLECTION_NAME,
-            points_selector={"filter": {"must": [{"key": "document_id", "match": {"value": document_id}}]}}
+        
+        # Create a proper filter using Qdrant's models
+        filter_condition = Filter(
+            must=[
+                FieldCondition(
+                    key="document_id",
+                    match=MatchValue(value=document_id)
+                )
+            ]
         )
         
-        # Delete metadata
-        doc_info = document_metadata[document_id]
-        del document_metadata[document_id]
-        print(f"[VECTORDB] Successfully deleted document: {doc_info.get('name', document_id)}")
+        # Get point IDs with the specified document_id
+        search_result = qdrant_client.scroll(
+            collection_name=COLLECTION_NAME,
+            scroll_filter=filter_condition,
+            limit=10000,  # Adjust based on your expected maximum number of chunks per document
+            with_payload=False,
+            with_vectors=False
+        )
+        
+        if search_result and search_result[0]:
+            point_ids = [point.id for point in search_result[0]]
+            if point_ids:
+                # Delete points by their IDs
+                qdrant_client.delete(
+                    collection_name=COLLECTION_NAME,
+                    points_selector=qdrant_client.points_selector(points=point_ids)
+                )
+                
+                # Delete metadata
+                doc_info = document_metadata[document_id]
+                del document_metadata[document_id]
+                print(f"[VECTORDB] Successfully deleted document: {doc_info.get('name', document_id)} with {len(point_ids)} chunks")
+                return True
+        
+        print(f"[VECTORDB] No chunks found for document: {document_id}")
+        # Clean up metadata even if no chunks were found
+        if document_id in document_metadata:
+            del document_metadata[document_id]
         return True
         
     print(f"[VECTORDB] Document not found: {document_id}")

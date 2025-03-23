@@ -13,6 +13,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const newTitleInput = document.getElementById('new-title-input');
     const saveTitleBtn = document.getElementById('save-title-btn');
 
+    // New conversation modal elements
+    const newConversationModal = document.getElementById('new-conversation-modal');
+    const closeNewConversationModalBtn = document.querySelector('.close-new-conversation-modal');
+    const conversationIdInput = document.getElementById('conversation-id-input');
+    const conversationTitleInput = document.getElementById('conversation-title-input');
+    const createConversationBtn = document.getElementById('create-conversation-btn');
+
     // Knowledge base elements
     const knowledgeTab = document.getElementById('knowledge-tab');
     const conversationsTab = document.getElementById('conversations-tab');
@@ -117,22 +124,80 @@ document.addEventListener('DOMContentLoaded', () => {
         chatLog.scrollTop = chatLog.scrollHeight;
     };
 
+    // Function to generate a UUID
+    const generateUUID = () => {
+        // Use the native crypto API if available for better randomness
+        if (window.crypto && window.crypto.randomUUID) {
+            return window.crypto.randomUUID();
+        }
+
+        // Fallback to manual implementation
+        const s = [];
+        const hexDigits = "0123456789abcdef";
+        for (let i = 0; i < 36; i++) {
+            s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
+        }
+        s[14] = "4";  // bits 12-15 of time_hi_and_version field to 0010
+        s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1);  // bits 6-7 of clock_seq_hi_and_reserved to 01
+        s[8] = s[13] = s[18] = s[23] = "-";
+
+        return s.join("");
+    };
+
+    // Function to open the new conversation modal
+    const openNewConversationModal = () => {
+        // Clear previous inputs and set default title
+        conversationIdInput.value = '';
+        conversationTitleInput.value = 'New Conversation';
+
+        // Display the modal
+        newConversationModal.style.display = 'block';
+
+        // Focus on the ID input first
+        conversationIdInput.focus();
+    };
+
+    // Function to close the new conversation modal
+    const closeNewConversationModal = () => {
+        newConversationModal.style.display = 'none';
+    };
+
     // Function to create a new conversation
-    const createNewConversation = async (title = 'New Conversation') => {
+    const createNewConversation = async () => {
+        let conversationId = conversationIdInput.value.trim();
+        let title = conversationTitleInput.value.trim() || 'New Conversation';
+
+        // Generate an ID if none is provided
+        if (!conversationId) {
+            conversationId = generateUUID();
+        }
+
         try {
             const response = await fetch(`${API_BASE_URL}/conversations`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title })
+                body: JSON.stringify({
+                    conversation_id: conversationId,
+                    title: title
+                })
             });
 
             if (!response.ok) {
+                // If it's a 400 error (likely due to duplicate ID)
+                if (response.status === 400) {
+                    const errorData = await response.json();
+                    alert(`Error: ${errorData.detail}`);
+                    return;
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const conversation = await response.json();
             currentConversationId = conversation.conversation_id;
             currentConversationTitle.textContent = conversation.title;
+
+            // Close the modal
+            closeNewConversationModal();
 
             // Update conversations list
             await loadConversations();
@@ -268,11 +333,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Remove from our local list
             conversations = conversations.filter(c => c.conversation_id !== currentConversationId);
 
-            // Select another conversation or create a new one
+            // Reset current conversation ID
+            currentConversationId = null;
+
+            // Clear chat log
+            chatLog.innerHTML = '';
+
+            // Update conversation title
+            currentConversationTitle.textContent = 'No Conversation Selected';
+
+            // Select another conversation or open the new conversation modal
             if (conversations.length > 0) {
                 selectConversation(conversations[0].conversation_id);
             } else {
-                createNewConversation();
+                // Open the modal to create a new conversation
+                openNewConversationModal();
             }
 
         } catch (error) {
@@ -288,7 +363,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Create a new conversation if we don't have one
         if (!currentConversationId) {
-            await createNewConversation();
+            // Open the modal to let the user create a conversation first
+            openNewConversationModal();
+            alert("Please create a conversation first before sending messages.");
+            return;
         }
 
         // Display user message
@@ -638,9 +716,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    newConversationBtn.addEventListener('click', () => createNewConversation());
+    newConversationBtn.addEventListener('click', openNewConversationModal);
     renameConversationBtn.addEventListener('click', openRenameModal);
     deleteConversationBtn.addEventListener('click', deleteConversation);
+
+    // New conversation modal event listeners
+    closeNewConversationModalBtn.addEventListener('click', closeNewConversationModal);
+    createConversationBtn.addEventListener('click', createNewConversation);
+
+    // Handle Enter key in conversation ID and title inputs
+    conversationIdInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            conversationTitleInput.focus();
+        }
+    });
+
+    conversationTitleInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            createNewConversation();
+        }
+    });
 
     closeModal.addEventListener('click', closeRenameModal);
     saveTitleBtn.addEventListener('click', renameConversation);
@@ -677,10 +772,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Hide modal when clicking outside
+    // Hide modals when clicking outside
     window.addEventListener('click', (event) => {
         if (event.target === renameModal) {
             closeRenameModal();
+        }
+        if (event.target === newConversationModal) {
+            closeNewConversationModal();
         }
     });
 
@@ -694,13 +792,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Initialize: load conversations or create a new one
+    // Initialize: load conversations or open new conversation modal
     const init = async () => {
         await loadConversations();
         if (conversations && conversations.length > 0) {
             selectConversation(conversations[0].conversation_id);
         } else {
-            createNewConversation();
+            // Instead of auto-creating, let the user create one
+            openNewConversationModal();
         }
 
         // Default to conversations tab

@@ -1,32 +1,4 @@
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: assistant_mongodb
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-    restart: unless-stopped
-    networks:
-      - app-network
-
-  mongo-express:
-    image: mongo-express:latest
-    container_name: assistant_mongo_express
-    ports:
-      - "8081:8081"
-    environment:
-      - ME_CONFIG_MONGODB_SERVER=assistant_mongodb
-      - ME_CONFIG_MONGODB_PORT=27017
-      - ME_CONFIG_MONGODB_ENABLE_ADMIN=true
-      - ME_CONFIG_BASICAUTH_USERNAME=admin
-      - ME_CONFIG_BASICAUTH_PASSWORD=password
-    depends_on:
-      - mongodb
-    restart: unless-stopped
-    networks:
-      - app-network
-
   backend:
     build:
       context: ./backend
@@ -34,10 +6,8 @@ services:
     container_name: assistant_backend
     ports:
       - "8000:8000"
-    depends_on:
-      - mongodb
     environment:
-      - MONGODB_URI=mongodb://assistant_mongodb:27017/assistant_db
+      - MONGODB_URI=${MONGODB_URI}
     env_file:
       - ./backend/.env
     networks:
