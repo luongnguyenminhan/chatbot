@@ -1,6 +1,7 @@
-from langchain_core.tools import tool
 from datetime import datetime, timezone
+
 from app.prompts import get_template, generate_prompt, FINANCIAL_FEW_SHOT_EXAMPLE
+from langchain_core.tools import tool
 
 
 @tool(return_direct=True)
