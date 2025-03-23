@@ -170,7 +170,7 @@ def delete_document(document_id):
                 if point_ids:
                     qdrant_client.delete(
                         collection_name=COLLECTION_NAME,
-                        points_ids=point_ids 
+                        points_ids=point_ids
                     )
 
                     # Delete metadata

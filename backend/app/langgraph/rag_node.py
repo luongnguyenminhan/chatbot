@@ -1,4 +1,3 @@
-import re
 from typing import Dict, List, Any
 
 from langchain_core.documents import Document
@@ -45,7 +44,7 @@ def format_docs(docs: List[Document]) -> str:
 async def should_use_rag(state, config):
     """Determine if RAG should be used for the current query."""
     use_rag = config.get("configurable", {}).get("use_rag", True)
-    
+
     # Return a state update with an empty list for queries to ensure we update a valid state key
     return {
         "need_rag": use_rag,
@@ -56,19 +55,19 @@ async def should_use_rag(state, config):
 async def generate_query(state: AgentState, config: Dict[str, Any]) -> Dict:
     """Generate a search query based on user input."""
     messages = state.get("messages", [])
-    
+
     # Only process if there's at least one message and it's from the user
     if not messages or not isinstance(messages[-1], HumanMessage):
         # Return empty queries list instead of empty dict
         return {"queries": []}
-    
+
     # Extract the user query
     human_input = get_message_text(messages[-1])
-    
+
     # For now, use the raw query directly
     queries = state.get("queries", [])
     queries.append(human_input)
-    
+
     return {"queries": queries}
 
 
@@ -82,16 +81,16 @@ async def retrieve_knowledge(state: AgentState, config: Dict[str, Any]) -> Dict:
             "rag_context": [],
             "retrieved_docs": []
         }
-    
+
     # Use the most recent query
     user_query = queries[-1]
-    
+
     try:
         # Use the context manager to get a retriever
         with make_retriever(config) as retriever:
             # Retrieve documents
             doc_objects = await retriever(user_query)
-            
+
             # Always return the keys even if empty
             return {
                 "rag_context": [doc.page_content for doc in doc_objects] if doc_objects else [],

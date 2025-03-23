@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-import os
 
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage
@@ -26,7 +25,7 @@ def should_continue(state):
     messages = state.get("messages", [])
     if not messages:
         return END
-        
+
     last_message = messages[-1]
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         return END
@@ -90,7 +89,7 @@ async def call_model(state, config):
     if not messages:
         # Handle the case when messages is empty
         return {"messages": [SystemMessage(content=enhanced_system)]}
-        
+
     full_messages = [SystemMessage(content=enhanced_system)] + messages
     print(f"[AGENT] Total messages in context: {len(full_messages)}")
 
@@ -98,12 +97,12 @@ async def call_model(state, config):
     print(f"[AGENT] Invoking model")
     model_with_tools = model.bind_tools(get_tool_defs(config))
     response = await model_with_tools.ainvoke(
-        full_messages, 
+        full_messages,
         {
             "system_time": datetime.now(tz=timezone.utc).isoformat(),
         }
     )
-    
+
     # Return the response to be added to the messages
     return {"messages": response}
 
@@ -112,10 +111,10 @@ async def run_tools(input, config, **kwargs):
     """Execute tools based on the model's response."""
     thread_id = config.get("configurable", {}).get("thread_id", "unknown")
     print(f"\n[TOOLS] Running tools for thread: {thread_id}")
-    
+
     tool_node = ToolNode(get_tools(config))
     response = await tool_node.ainvoke(input, config, **kwargs)
-    
+
     print(f"[TOOLS] Tool response received")
     return response
 
@@ -165,11 +164,11 @@ assistant_ui_graph = workflow.compile(checkpointer=memory)
 
 # Helper function to interact with the memory-enabled agent
 async def chat_with_memory(
-    messages, 
-    conversation_id, 
-    system="You are a helpful AI assistant.", 
-    frontend_tools=None,
-    use_rag=True
+        messages,
+        conversation_id,
+        system="You are a helpful AI assistant.",
+        frontend_tools=None,
+        use_rag=True
 ):
     """
     Chat with the agent while maintaining conversation history across sessions
@@ -192,5 +191,5 @@ async def chat_with_memory(
 
     # Initialize state
     initial_state = {"messages": messages}
-    
+
     return await assistant_ui_graph.ainvoke(initial_state, config)
