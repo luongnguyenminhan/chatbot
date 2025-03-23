@@ -15,10 +15,10 @@ from langchain_community.document_loaders import (
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_qdrant import Qdrant
+from langchain_qdrant import QdrantVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, Filter, FieldCondition, MatchValue, Points
+from qdrant_client.models import Distance, VectorParams, Filter, FieldCondition, MatchValue
 
 # Load environment variables from .env file
 load_dotenv()
@@ -52,11 +52,11 @@ except Exception:
     )
     print(f"[VECTORDB] Created new Qdrant collection: {COLLECTION_NAME}")
 
-# Initialize vector store
-vector_store = Qdrant(
+# Initialize vector store - Fix the parameter name from embeddings to embedding
+vector_store = QdrantVectorStore(
     client=qdrant_client,
     collection_name=COLLECTION_NAME,
-    embeddings=embeddings,
+    embedding=embeddings,  # Changed from embeddings to embedding
 )
 
 
@@ -168,10 +168,9 @@ def delete_document(document_id):
             if search_result and search_result[0]:
                 point_ids = [point.id for point in search_result[0]]
                 if point_ids:
-                    # Delete points by their IDs
                     qdrant_client.delete(
                         collection_name=COLLECTION_NAME,
-                        points_selector=Points(points=point_ids)
+                        points_ids=point_ids 
                     )
 
                     # Delete metadata
