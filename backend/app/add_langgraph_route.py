@@ -1,9 +1,8 @@
-from fastapi import FastAPI, Response
-from fastapi.responses import StreamingResponse
 import json
-import asyncio
-from assistant_stream import create_run, RunController
-from assistant_stream.serialization import DataStreamResponse
+from typing import List, Optional
+
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import (
     HumanMessage,
     AIMessageChunk,
@@ -12,23 +11,19 @@ from langchain_core.messages import (
     SystemMessage,
     BaseMessage,
 )
-from fastapi import FastAPI, HTTPException, Request
-from typing import List, Any, Optional
-import uuid
+
 from .database.mongo_client import mongo_db
 from .models import (
     LanguageModelV1Message,
     LanguageModelTextPart,
     LanguageModelImagePart,
     LanguageModelToolCallPart,
-    LanguageModelToolResultPart,
-    ChatRequest,
-    FrontendToolCall
+    ChatRequest
 )
 
 
 def convert_to_langchain_messages(
-    messages: List[LanguageModelV1Message],
+        messages: List[LanguageModelV1Message],
 ) -> List[BaseMessage]:
     result = []
 
@@ -46,7 +41,6 @@ def convert_to_langchain_messages(
             result.append(HumanMessage(content=content))
 
         elif msg.role == "assistant":
-            # Handle both text and tool calls
             text_parts = [
                 p for p in msg.content if isinstance(p, LanguageModelTextPart)
             ]
@@ -81,11 +75,10 @@ def save_message_to_mongodb(conversation_id: str, role: str, content: str, tool_
             "role": role,
             "content": content,
         }
-        
-        # Add tool information if provided
+
         if tool_info:
             message_data["tool_info"] = tool_info
-            
+
         mongo_db.save_message(conversation_id, message_data)
         return True
     return False
@@ -93,29 +86,24 @@ def save_message_to_mongodb(conversation_id: str, role: str, content: str, tool_
 
 def add_langgraph_route(app: FastAPI, graph, base_path: str):
     async def chat_completions(conversation_id: str, request: ChatRequest):
-        
+
         inputs = convert_to_langchain_messages(request.messages)
-        
-        # Save user message to MongoDB
+
         for msg in request.messages:
             if msg.role == "user":
-                # Extract text from user message
                 text_content = ""
                 for part in msg.content:
                     if isinstance(part, LanguageModelTextPart):
                         text_content += part.text
-                
+
                 if text_content:
                     save_message_to_mongodb(conversation_id, "user", text_content)
-        
-        # Use conversation_id from URL path for thread persistence
+
         thread_id = conversation_id
 
-        # Custom streaming implementation
         async def stream_response():
             """Stream response with proper Unicode handling"""
-            
-            # Pass thread_id to the graph configuration
+
             config = {
                 "configurable": {
                     "system": request.system,
@@ -123,80 +111,67 @@ def add_langgraph_route(app: FastAPI, graph, base_path: str):
                     "thread_id": thread_id
                 }
             }
-            
+
             message_count = 0
-            full_response = ""  
-            
+            full_response = ""
+
             try:
-                
+
                 yield "data: {}\n\n"
-                
+
                 async for msg, metadata in graph.astream(
-                    {"messages": inputs},
-                    config,
-                    stream_mode="messages",
+                        {"messages": inputs},
+                        config,
+                        stream_mode="messages",
                 ):
                     message_count += 1
-                    
+
                     if isinstance(msg, AIMessageChunk) or isinstance(msg, AIMessage):
                         if msg.content:
-                           
-                            
-
-                            
-                            # Send as JSON to preserve Unicode
                             json_data = json.dumps({"text": msg.content})
                             yield f"data: {json_data}\n\n"
-                            
-                            # Collect content for saving to MongoDB
+
                             full_response += msg.content
-                    
+
                     elif isinstance(msg, ToolMessage):
                         json_data = json.dumps({"tool": msg.tool_call_id, "result": msg.content})
                         yield f"data: {json_data}\n\n"
-                        
-                        # Save tool messages to MongoDB
+
                         save_message_to_mongodb(
-                            conversation_id, 
-                            "tool", 
-                            msg.content, 
+                            conversation_id,
+                            "tool",
+                            msg.content,
                             {"tool_call_id": msg.tool_call_id}
                         )
-                
-                # Save the complete assistant response to MongoDB
+
                 if full_response:
-                    # Clean up any hidden conversation ID markers
                     clean_response = full_response.replace(f"\n<!--conversation_id:{thread_id}-->", "")
                     save_message_to_mongodb(conversation_id, "assistant", clean_response)
-                
-                # Add conversation ID reference at the end
+
                 thread_ref = f"\n<!--conversation_id:{thread_id}-->"
                 yield f"data: {json.dumps({'text': thread_ref})}\n\n"
-                
+
             except Exception as e:
                 error_msg = {"error": str(e)}
                 yield f"data: {json.dumps(error_msg)}\n\n"
-        
-        # Use standard StreamingResponse with SSE format
+
         return StreamingResponse(
-            stream_response(), 
+            stream_response(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
-                "Connection": "keep-alive", 
+                "Connection": "keep-alive",
                 "Content-Encoding": "identity"
             }
         )
 
-    # New endpoint to retrieve conversation history
     @app.get(f"{base_path}/{{conversation_id}}/history")
     async def get_conversation_history(conversation_id: str):
         """Get message history for a conversation"""
         if not mongo_db.health_check():
             return {"messages": [], "error": "MongoDB not available"}
-        
+
         messages = mongo_db.get_conversation_messages(conversation_id)
         return {"messages": messages}
 
-    # New endpoint format using conversation_id in the path
     app.add_api_route(f"{base_path}/{{conversation_id}}/chat", chat_completions, methods=["POST"])

@@ -1,8 +1,8 @@
-from pydantic import BaseModel, Field
 from typing import List, Literal, Union, Optional, Dict, Any
-from datetime import datetime
 
-# ---------- Conversation Models ----------
+from pydantic import BaseModel
+
+
 class Conversation(BaseModel):
     conversation_id: str
     title: Optional[str] = "New Conversation"
@@ -19,7 +19,6 @@ class ConversationUpdate(BaseModel):
     title: Optional[str] = None
 
 
-# ---------- Message Models ----------
 class MessageBase(BaseModel):
     conversation_id: str
     role: str
@@ -36,7 +35,6 @@ class MessageResponse(MessageBase):
     tool_info: Optional[Dict[str, Any]] = None
 
 
-# ---------- Language Model Message Parts ----------
 class LanguageModelTextPart(BaseModel):
     type: Literal["text"]
     text: str
@@ -45,14 +43,12 @@ class LanguageModelTextPart(BaseModel):
 
 class LanguageModelImagePart(BaseModel):
     type: Literal["image"]
-    image: str  # Will handle URL or base64 string
     mimeType: Optional[str] = None
     providerMetadata: Optional[Any] = None
 
 
 class LanguageModelFilePart(BaseModel):
     type: Literal["file"]
-    data: str  # URL or base64 string
     mimeType: str
     providerMetadata: Optional[Any] = None
 
@@ -82,7 +78,6 @@ class LanguageModelToolResultPart(BaseModel):
     providerMetadata: Optional[Any] = None
 
 
-# ---------- Message Models ----------
 class LanguageModelSystemMessage(BaseModel):
     role: Literal["system"]
     content: str
@@ -113,7 +108,6 @@ LanguageModelV1Message = Union[
 ]
 
 
-# ---------- Tool and Chat Models ----------
 class FrontendToolCall(BaseModel):
     name: str
     description: Optional[str] = None
@@ -124,17 +118,13 @@ class ChatRequest(BaseModel):
     system: Optional[str] = ""
     tools: Optional[List[FrontendToolCall]] = []
     messages: List[LanguageModelV1Message]
-    # No thread_id field since it comes from path parameter
 
 
 class AnyArgsSchema(BaseModel):
-    # By not defining any fields and allowing extras,
-    # this schema will accept any input passed in.
     class Config:
         extra = "allow"
 
 
-# ---------- API Response Models ----------
 class StatusResponse(BaseModel):
     status: str
     message: str

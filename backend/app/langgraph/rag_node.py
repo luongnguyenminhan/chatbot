@@ -1,43 +1,105 @@
 from typing import Dict, List, Any
-from langchain_core.messages import HumanMessage, AIMessage
-from ..knowledge.vectordb import query_knowledge_base
+
+from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
+
 from .state import AgentState
+from ..knowledge.vectordb import make_retriever
+
+
+class SearchQuery(BaseModel):
+    """Search the indexed documents for a query."""
+    query: str
+
+
+def get_message_text(msg):
+    """Extract text content from various message formats."""
+    content = msg.content
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, dict):
+        return content.get("text", "")
+    else:
+        texts = [c if isinstance(c, str) else (c.get("text") or "") for c in content]
+        return "".join(texts).strip()
+
+
+def format_docs(docs: List[Document]) -> str:
+    """Format documents as XML for inclusion in prompts."""
+    if not docs:
+        return "<documents></documents>"
+
+    formatted_docs = []
+    for doc in docs:
+        metadata = doc.metadata or {}
+        meta_str = "".join(f" {k}={v!r}" for k, v in metadata.items())
+        if meta_str:
+            meta_str = f" {meta_str}"
+        formatted_docs.append(f"<document{meta_str}>\n{doc.page_content}\n</document>")
+
+    return f"<documents>\n{''.join(formatted_docs)}\n</documents>"
+
+
+async def should_use_rag(state, config):
+    """Determine if RAG should be used for the current query."""
+    use_rag = config.get("configurable", {}).get("use_rag", True)
+
+    # Return a state update with an empty list for queries to ensure we update a valid state key
+    return {
+        "need_rag": use_rag,
+        "queries": []  # Include an empty list for queries to satisfy the state update requirement
+    }
+
+
+async def generate_query(state: AgentState, config: Dict[str, Any]) -> Dict:
+    """Generate a search query based on user input."""
+    messages = state.get("messages", [])
+
+    # Only process if there's at least one message and it's from the user
+    if not messages or not isinstance(messages[-1], HumanMessage):
+        # Return empty queries list instead of empty dict
+        return {"queries": []}
+
+    # Extract the user query
+    human_input = get_message_text(messages[-1])
+
+    # For now, use the raw query directly
+    queries = state.get("queries", [])
+    queries.append(human_input)
+
+    return {"queries": queries}
 
 
 async def retrieve_knowledge(state: AgentState, config: Dict[str, Any]) -> Dict:
-    """
-    LangGraph node for retrieving information from knowledge base.
-    This node checks if the latest message from the user needs RAG enhancement.
-    """
-    print(f"\n[RAG NODE] Starting knowledge retrieval for thread: {config.get('configurable', {}).get('thread_id', 'unknown')}")
-    
-    messages = state.get("messages", [])
-    
-    # Only process if there's at least one message and it's from the user
-    if not messages or not isinstance(messages[-1], HumanMessage):
-        print("[RAG NODE] No user message found, skipping retrieval")
-        return {}
-    
-    # Get the latest user query
-    user_query = messages[-1].content
-    if isinstance(user_query, list):  # Handle multimodal content
-        text_parts = [part.get("text", "") for part in user_query if part.get("type") == "text"]
-        user_query = " ".join(text_parts)
-    
-    print(f"[RAG NODE] User query: {user_query[:100]}...")
-    
+    """Retrieve relevant documents based on the query."""
+    # Check if we have queries
+    queries = state.get("queries", [])
+    if not queries:
+        # Return empty lists instead of empty dict
+        return {
+            "rag_context": [],
+            "retrieved_docs": []
+        }
+
+    # Use the most recent query
+    user_query = queries[-1]
+
     try:
-        # Query the knowledge base
-        print("[RAG NODE] Querying knowledge base...")
-        retrieved_docs = query_knowledge_base(user_query)
-        print(f"[RAG NODE] Retrieved {len(retrieved_docs)} documents")
-        
-        if retrieved_docs:
-            for i, doc in enumerate(retrieved_docs):
-                print(f"[RAG NODE] Doc {i+1} snippet: {doc[:50]}...")
-        
-        # Add retrieved context to the state
-        return {"rag_context": retrieved_docs}
+        # Use the context manager to get a retriever
+        with make_retriever(config) as retriever:
+            # Retrieve documents
+            doc_objects = await retriever(user_query)
+
+            # Always return the keys even if empty
+            return {
+                "rag_context": [doc.page_content for doc in doc_objects] if doc_objects else [],
+                "retrieved_docs": doc_objects if doc_objects else []
+            }
     except Exception as e:
         print(f"[RAG NODE] Error in knowledge retrieval: {str(e)}")
-        return {}
+        # Return empty lists instead of empty dict
+        return {
+            "rag_context": [],
+            "retrieved_docs": []
+        }

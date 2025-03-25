@@ -31,6 +31,7 @@ When categorizing expenses, match the user's spending to the appropriate categor
 Always maintain a supportive, non-judgmental tone when discussing finances.
 {additional_instructions}"""
 
+
 def get_template(template_type, additional_instructions=""):
     """
     Get a specific prompt template with optional additional instructions.
@@ -47,6 +48,6 @@ def get_template(template_type, additional_instructions=""):
         'financial': FINANCIAL_ANALYSIS_TEMPLATE,
         'personal_finance': PERSONAL_FINANCE_TEMPLATE,
     }
-    
+
     template = templates.get(template_type.lower(), BASE_SYSTEM_TEMPLATE)
     return template.format(additional_instructions=additional_instructions)
