@@ -7,11 +7,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_URI=mongodb://mongodb:27017/assistant_db
     env_file:
       - ./backend/.env
     networks:
       - app-network
+    depends_on:
+      - mongodb
 
   frontend:
     build:
@@ -24,6 +26,16 @@ services:
       - backend
     environment:
       - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - app-network
+      
+  mongodb:
+    image: mongo:latest
+    container_name: assistant_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
     networks:
       - app-network
 

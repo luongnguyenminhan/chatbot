@@ -13,7 +13,7 @@ def get_user_subcategories(user_id):
     """Fetch subcategories for a given user ID from the API."""
     print(f"\n[TOOLS] get_user_subcategories called for user: {user_id}")
     headers = {"X-Webhook-Secret": "thisIsSerectKeyPythonService"}
-    url = f"api/v1/user-spending-models/current/webhook/sub-categories?userId={user_id}"
+    url = f"https://easymoney.anttravel.online/api/v1/user-spending-models/current/webhook/sub-categories?userId={user_id}"
     print(f"[TOOLS] Making API request to: {url}")
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -31,15 +31,16 @@ def get_user_subcategories(user_id):
         return None
 
 @tool(return_direct=False)
-def user_input_expense(user_id: Optional[str] = None):
+def user_input_expense():#(user_id: Optional[str] = None):
     """Xác định số tiền chi tiêu và mục đích chi tiêu sau đó phân loại vào danh mục chi tiêu dựa trên danh sách nhận được từ API."""
     print(f"\n[TOOLS] user_input_expense called with user_id: {user_id}")
     # Fetch subcategories from the API
+    user_id = "7F583FFD-4C32-44C8-6214-08DD3DDA7643"
     if user_id:
         try:
             print(f"[TOOLS] Fetching subcategories for user_id: {user_id}")
             headers = {"X-Webhook-Secret": "thisIsSerectKeyPythonService"}
-            url = f"api/v1/user-spending-models/current/webhook/sub-categories?userId={user_id}"
+            url = f"https://easymoney.anttravel.online/api/v1/user-spending-models/current/webhook/sub-categories?userId={user_id}"
             print(f"[TOOLS] Making API request to: {url}")
             response = requests.get(url, headers=headers)
             

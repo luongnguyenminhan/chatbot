@@ -9,7 +9,7 @@ from pymongo import MongoClient
 load_dotenv()
 
 # Get MongoDB connection string from environment variables or use default
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/")
+MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://mongodb:27017/assistant_db")
 DB_NAME = os.environ.get("MONGODB_DB_NAME", "assistant_db")
 
 # Collections
@@ -26,14 +26,18 @@ class MongoDBClient:
     def _connect(self):
         """Connect to MongoDB using the URI from environment variables."""
         try:
-            mongo_uri = os.getenv("MONGODB_URI", "mongodb://assistant_mongodb:27017/assistant_db")
-            self.client = MongoClient(mongo_uri)
+            # Use MongoDB URI environment variable with a default that uses the Docker service name
+            mongo_uri = os.getenv("MONGODB_URI", "mongodb://mongodb:27017/assistant_db")
+            self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            # Test the connection
+            self.client.admin.command('ping')
             self.db = self.client.get_database()
             print(f"Connected to MongoDB: {mongo_uri}")
         except Exception as e:
-            print(f"Error connecting to MongoDB: {e}")
+            print(f"Error connecting to MongoDB: {e}, current connection string: {mongo_uri}")
             self.client = None
             self.db = None
+            print("WARNING: MongoDB connection failed, falling back to in-memory storage")
 
     def health_check(self) -> bool:
         """Check if the database connection is healthy."""

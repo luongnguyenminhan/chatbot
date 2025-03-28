@@ -274,9 +274,30 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear chat log
         chatLog.innerHTML = '';
 
-        // In a real app, you'd load the conversation history here
-        // For now, we'll just show a welcome back message
-        displayMessage("Welcome back! How can I help you with this conversation?", "assistant");
+        // Load conversation history from the API
+        try {
+            const response = await fetch(`${API_BASE_URL}/${conversationId}/history`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const messages = data.messages || [];
+
+            // Display messages in the chat log
+            if (messages.length > 0) {
+                messages.forEach(message => {
+                    displayMessage(message.content, message.role);
+                });
+            } else {
+                // If no messages, show welcome message
+                displayMessage("Welcome! How can I assist you today?", "assistant");
+            }
+
+        } catch (error) {
+            console.error('Error loading conversation history:', error);
+            displayMessage("Error loading conversation history. Let's start fresh!", "assistant");
+        }
     };
 
     // Function to rename the current conversation

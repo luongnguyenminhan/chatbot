@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+from typing import Dict, List, Any, Optional
 
 from dotenv import load_dotenv
+from langchain_core.callbacks import CallbackManager
+from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI

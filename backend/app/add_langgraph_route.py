@@ -68,6 +68,41 @@ def convert_to_langchain_messages(
     return result
 
 
+def convert_mongodb_messages_to_langchain(messages: List[dict]) -> List[BaseMessage]:
+    """Convert messages from MongoDB format to LangChain message format"""
+    result = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        
+        if role == "system":
+            result.append(SystemMessage(content=content))
+        elif role == "user":
+            result.append(HumanMessage(content=content))
+        elif role == "assistant":
+            tool_info = msg.get("tool_info")
+            if tool_info:
+                # Handle tool calls if present
+                result.append(AIMessage(
+                    content=content,
+                    tool_calls=[{
+                        "id": tool_info.get("tool_call_id", ""),
+                        "name": tool_info.get("tool_name", ""),
+                        "args": tool_info.get("args", {})
+                    }]
+                ))
+            else:
+                result.append(AIMessage(content=content))
+        elif role == "tool":
+            tool_info = msg.get("tool_info", {})
+            result.append(ToolMessage(
+                content=content,
+                tool_call_id=tool_info.get("tool_call_id", "")
+            ))
+            
+    return result
+
+
 def save_message_to_mongodb(conversation_id: str, role: str, content: str, tool_info: Optional[dict] = None):
     """Save a message to MongoDB if the connection is available"""
     if mongo_db.health_check():
@@ -86,9 +121,29 @@ def save_message_to_mongodb(conversation_id: str, role: str, content: str, tool_
 
 def add_langgraph_route(app: FastAPI, graph, base_path: str):
     async def chat_completions(conversation_id: str, request: ChatRequest):
+        # Get existing message history from MongoDB
+        previous_messages = []
+        if mongo_db.health_check():
+            mongo_messages = mongo_db.get_conversation_messages(conversation_id)
+            if mongo_messages:
+                previous_messages = convert_mongodb_messages_to_langchain(mongo_messages)
+        
+        # Convert new messages from the request
+        new_messages = convert_to_langchain_messages(request.messages)
+        
+        # Determine if we need to initialize with history or just use the new messages
+        # If we have previous messages and this is just a single new user message,
+        # we'll combine them to maintain conversation context
+        if previous_messages and len(new_messages) == 1 and isinstance(new_messages[0], HumanMessage):
+            # Use the full history plus the new message
+            inputs = previous_messages + new_messages
+            print(f"[CHAT] Initializing with {len(inputs)} messages ({len(previous_messages)} from history)")
+        else:
+            # Just use the messages from the request (e.g., if frontend sent full history)
+            inputs = new_messages
+            print(f"[CHAT] Using {len(inputs)} messages from request")
 
-        inputs = convert_to_langchain_messages(request.messages)
-
+        # Save new user messages to MongoDB
         for msg in request.messages:
             if msg.role == "user":
                 text_content = ""
